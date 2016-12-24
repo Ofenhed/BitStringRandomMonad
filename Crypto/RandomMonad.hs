@@ -2,7 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module Crypto.RandomMonad (RndT, RndST, RndIO, Rnd, RndState, getRandomM, getRandom2M, runRndT, newRandomElementST, getRandomElement, randomElementsLength, replaceSeedM, addSeedM, getRandomByteStringM, RandomElementsListST) where
+module Crypto.RandomMonad (RndT, RndST, RndIO, Rnd, RndState, getRandomM, getRandom2M, runRndT, newRandomElementST, getRandomElement, randomElementsLength, replaceSeedM, addSeedM, getRandomByteStringM, RandomElementsListST()) where
 
 import Control.Exception (Exception, throw)
 import Control.Monad.Identity (Identity)
@@ -89,7 +89,8 @@ getRandomElement (RandomElementsListST ref) = do
   lift $ writeSTRef ref $ V.unsafeTail vec''
   return ab
 
-randomElementsLength ref = do
+randomElementsLength :: (VM.Unbox a) => RandomElementsListST s a -> RndST s Int
+randomElementsLength (RandomElementsListST ref) = do
   vec <- lift $ readSTRef ref
   return $ V.length vec
 
