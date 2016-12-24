@@ -2,7 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module Crypto.RandomMonad (RndT, RndST, RndIO, Rnd, RndState, getRandomM, getRandom2M, runRndT, newRandomElementST, getRandomElement, randomElementsLength, replaceSeedM, addSeedM, getRandomByteStringM) where
+module Crypto.RandomMonad (RndT, RndST, RndIO, Rnd, RndState, getRandomM, getRandom2M, runRndT, newRandomElementST, getRandomElement, randomElementsLength, replaceSeedM, addSeedM, getRandomByteStringM, RandomElementsListST) where
 
 import Control.Exception (Exception, throw)
 import Control.Monad.Identity (Identity)
@@ -21,6 +21,7 @@ import qualified Data.Vector.Unboxed as V
 import qualified Data.Vector.Unboxed.Mutable as VM
 
 data BitStringToRandomExceptions = OutOfElementsException deriving (Show, Typeable)
+data RandomElementsListST s a = RandomElementsListST (STRef s (V.Vector a))
 instance Exception BitStringToRandomExceptions
 
 bitsNeeded :: Integer -> Integer
@@ -70,11 +71,11 @@ getRandomByteString :: Integer -> [BS.BitString] -> (ByS.ByteString, [BS.BitStri
 getRandomByteString 0 x = (ByS.pack [], x)
 getRandomByteString len x = let (byte, newState) = getRandom 255 x ; (allBytes, lastState) = getRandomByteString (len - 1) newState in (ByS.cons (fromIntegral byte) allBytes, lastState)
 
-newRandomElementST :: VM.Unbox a => [a] -> ST s (STRef s (V.Vector a))
-newRandomElementST acc = newSTRef $ V.fromList acc
+newRandomElementST :: VM.Unbox a => [a] -> ST s (RandomElementsListST s a)
+newRandomElementST acc = (newSTRef $ V.fromList acc) >>= \ref -> return $ RandomElementsListST ref
 
-getRandomElement :: (V.Unbox a) => STRef s (V.Vector a) -> RndST s a
-getRandomElement ref = do
+getRandomElement :: VM.Unbox a => (RandomElementsListST s a) -> RndST s a
+getRandomElement (RandomElementsListST ref) = do
   vec <- lift $ readSTRef ref
   vec' <- lift $ V.unsafeThaw vec
   let n = toInteger $ VM.length vec'
