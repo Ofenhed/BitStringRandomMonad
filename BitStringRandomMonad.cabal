@@ -2,7 +2,7 @@
 --  documentation, see http://haskell.org/cabal/users-guide/
 
 name:                BitStringRandomMonad
-version:             0.2.0.0
+version:             0.2.0.1
 description:         A library which turns a bytestring into a random monad.
                      Input could be any PRNG which can output a lazy
                      bytestring.

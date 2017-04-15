@@ -120,8 +120,11 @@ type RndST s a = RndT (ST s) a
 type RndIO a = RndT IO a
 type Rnd a = RndT Identity a
 
-replaceSeedM :: Monad m => RndState -> RndT m ()
-replaceSeedM s = RndT $ put s
+replaceSeedM :: Monad m => RndStatePrimitive -> RndT m ()
+replaceSeedM s = RndT $ state $ replaceSeedM s
+  where
+  replaceSeedM newState (RndStateListParallel _) = ((),RndStateListParallel newState)
+  replaceSeedM newState (RndStateListSequencial _) = ((),RndStateListSequencial newState)
 
 addSeedM :: Monad m => RndStatePrimitive -> RndT m ()
 addSeedM s = RndT $ state $ addSeedM s
