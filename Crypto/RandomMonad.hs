@@ -3,7 +3,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE Trustworthy #-}
 
-module Crypto.RandomMonad (RndT, RndST, RndIO, Rnd, RndState, getRandomM, getRandom2M, runRndT, newRandomElementST, getRandomElement, randomElementsLength, replaceSeedM, addSeedM, getRandomByteStringM, RandomElementsListST(), BitStringToRandomExceptions(..)) where
+module Crypto.RandomMonad (RndT, RndST, RndIO, Rnd, RndState, getRandomM, getRandom2M, runRndT, newRandomElementST, getRandomElement, randomElementsLength, replaceSeedM, addSeedM, getRandomByteStringM, RandomElementsListST, RndStateList(..), BitStringToRandomExceptions(..)) where
 
 import Control.Exception (Exception, throw)
 import Control.Monad.Identity (Identity)
@@ -33,10 +33,17 @@ convertBitStringToInteger = BS.foldl' convert' 0
   convert' :: Integer -> Bool -> Integer
   convert' prev cur = (shiftL prev 1) .|. (case cur of True -> 1 ; False -> 0)
 
-multipleBitstringsSplitAt i x = join' (split' x) [] []
+multipleBitstringsSplitAt i (RndStateListSequencial [x]) = let (takers, droppers) = BS.splitAt i x in ([takers], RndStateListSequencial [droppers])
+multipleBitstringsSplitAt i (RndStateListSequencial x) = join' (split' x) [] []
+ where
+ split' = map $ BS.splitAt i
+ join' [] takers droppers = (takers, RndStateListSequencial droppers)
+ join' (x:xs) takers droppers = let (newTake, newDrop) = x in join' xs (newTake:takers) (newDrop:droppers)
+multipleBitstringsSplitAt i (RndStateListParallel [x]) = let (takers, droppers) = BS.splitAt i x in ([takers], RndStateListParallel [droppers])
+multipleBitstringsSplitAt i (RndStateListParallel x) = join' (split' x) [] []
  where
  split' = parMap rpar (\bs -> let (take,drop) = BS.splitAt i bs in (take `using` rseq, drop))
- join' [] takers droppers = (takers, droppers)
+ join' [] takers droppers = (takers, RndStateListParallel droppers)
  join' (x:xs) takers droppers = let (newTake, newDrop) = x in join' xs (newTake:takers) (newDrop:droppers)
 
 multipleBitstringsAssertLength _ [] = False
@@ -48,7 +55,7 @@ multipleBitstringsAssertLength len x = len' x
                    else False
 
 
-getRandom :: Integer -> [BS.BitString] -> (Integer, [BS.BitString])
+getRandom :: Integer -> RndStateList -> (Integer, RndStateList)
 getRandom 0 x = (0, x)
 getRandom max string = if has_error
                           then error "There was an error acquiring random data"
@@ -61,14 +68,14 @@ getRandom max string = if has_error
     random = foldl (\i cur -> xor i $ convertBitStringToInteger cur) 0 used
     (used, unused) = multipleBitstringsSplitAt (fromIntegral bitsNeeded') string
 
-getRandom2 :: Integer -> Integer -> [BS.BitString] -> (Integer, [BS.BitString])
+getRandom2 :: Integer -> Integer -> RndStateList -> (Integer, RndStateList)
 getRandom2 a b string = getRandom2' (getRandom (max' - min') string)
   where
   min' = min a b
   max' = max a b
   getRandom2' (random, unused) = (random + min', unused)
 
-getRandomByteString :: Integer -> [BS.BitString] -> (ByS.ByteString, [BS.BitString])
+getRandomByteString :: Integer -> RndStateList -> (ByS.ByteString, RndStateList)
 getRandomByteString 0 x = (ByS.pack [], x)
 getRandomByteString len x = let (byte, newState) = getRandom 255 x ; (allBytes, lastState) = getRandomByteString (len - 1) newState in (ByS.cons (fromIntegral byte) allBytes, lastState)
 
@@ -95,7 +102,11 @@ randomElementsLength (RandomElementsListST ref) = do
   vec <- lift $ readSTRef ref
   return $ V.length vec
 
-type RndState = [BS.BitString]
+type RndStatePrimitive = [BS.BitString]
+data RndStateList = RndStateListSequencial RndStatePrimitive
+                  | RndStateListParallel RndStatePrimitive
+
+type RndState = RndStateList
 newtype RndT m a = RndT
   { unRndT :: StateT RndState m a }
   deriving (Functor, Applicative, Monad, MonadTrans)
@@ -112,10 +123,11 @@ type Rnd a = RndT Identity a
 replaceSeedM :: Monad m => RndState -> RndT m ()
 replaceSeedM s = RndT $ put s
 
-addSeedM :: Monad m => RndState -> RndT m ()
+addSeedM :: Monad m => RndStatePrimitive -> RndT m ()
 addSeedM s = RndT $ state $ addSeedM s
   where
-  addSeedM x y = ((),x ++ y)
+  addSeedM x (RndStateListSequencial y) = ((),RndStateListSequencial (x ++ y))
+  addSeedM x (RndStateListParallel y) = ((),RndStateListParallel (x ++ y))
 
 
 getRandomM :: Monad m => Integer -> RndT m Integer
