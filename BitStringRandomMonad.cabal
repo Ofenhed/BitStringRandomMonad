@@ -33,7 +33,7 @@ library
 
 Test-Suite random-monad-tests
   type: exitcode-stdio-1.0
-  hs-source-dir: Test
+  hs-source-dirs: Test
   main-is: Tests.hs
   build-depends: base,
                  QuickCheck,
