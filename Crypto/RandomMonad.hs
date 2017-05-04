@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE Trustworthy #-}
+{-# LANGUAGE GADTs #-}
 
 module Crypto.RandomMonad (RndT, RndST, RndIO, Rnd, RndState, getRandomM, getRandom2M, runRndT, newRandomElementST, getRandomElement, randomElementsLength, replaceSeedM, addSeedM, getRandomByteStringM, RandomElementsListST, RndStateList(..), BitStringToRandomExceptions(..)) where
 
@@ -22,7 +23,7 @@ import qualified Data.Vector.Unboxed as V
 import qualified Data.Vector.Unboxed.Mutable as VM
 
 data BitStringToRandomExceptions = OutOfElementsException deriving (Show, Typeable)
-data RandomElementsListST s a = RandomElementsListST (STRef s (V.Vector a))
+data RandomElementsListST a s = VM.Unbox a => RandomElementsListST (STRef s (V.Vector a))
 instance Exception BitStringToRandomExceptions
 
 bitsNeeded :: Integer -> Integer
@@ -79,10 +80,10 @@ getRandomByteString :: Integer -> RndStateList -> (ByS.ByteString, RndStateList)
 getRandomByteString 0 x = (ByS.pack [], x)
 getRandomByteString len x = let (byte, newState) = getRandom 255 x ; (allBytes, lastState) = getRandomByteString (len - 1) newState in (ByS.cons (fromIntegral byte) allBytes, lastState)
 
-newRandomElementST :: VM.Unbox a => [a] -> ST s (RandomElementsListST s a)
+newRandomElementST :: VM.Unbox a => [a] -> ST s (RandomElementsListST a s)
 newRandomElementST acc = (newSTRef $ V.fromList acc) >>= \ref -> return $ RandomElementsListST ref
 
-getRandomElement :: VM.Unbox a => (RandomElementsListST s a) -> RndST s a
+getRandomElement :: (RandomElementsListST a s) -> RndST s a
 getRandomElement (RandomElementsListST ref) = do
   vec <- lift $ readSTRef ref
   vec' <- lift $ V.unsafeThaw vec
@@ -97,7 +98,7 @@ getRandomElement (RandomElementsListST ref) = do
   lift $ writeSTRef ref $ V.unsafeTail vec''
   return ab
 
-randomElementsLength :: (VM.Unbox a) => RandomElementsListST s a -> RndST s Int
+randomElementsLength :: RandomElementsListST a s -> RndST s Int
 randomElementsLength (RandomElementsListST ref) = do
   vec <- lift $ readSTRef ref
   return $ V.length vec
