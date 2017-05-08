@@ -85,18 +85,18 @@ newRandomElementST acc = (newSTRef $ V.fromList acc) >>= \ref -> return $ Random
 
 getRandomElement :: (RandomElementsListST a s) -> RndST s a
 getRandomElement (RandomElementsListST ref) = do
-  vec <- lift $ readSTRef ref
-  vec' <- lift $ V.unsafeThaw vec
-  let n = toInteger $ VM.length vec'
+  mut <- lift $ readSTRef ref >>= V.unsafeThaw
+  let n = toInteger $ VM.length mut
   j <- if n > 0 then getRandomM $ n - 1
                 else throw OutOfElementsException
   let j' = fromInteger j
-  aa <- lift $ VM.read vec' 0
-  ab <- lift $ VM.read vec' j'
-  lift $ VM.write vec' j' aa
-  vec'' <- lift $ V.unsafeFreeze vec'
-  lift $ writeSTRef ref $ V.unsafeTail vec''
-  return ab
+  lift $ do
+    aa <- VM.read mut 0
+    ab <- VM.read mut j'
+    VM.write mut j' aa
+    vec <- V.unsafeFreeze mut
+    writeSTRef ref $ V.unsafeTail vec
+    return ab
 
 randomElementsLength :: RandomElementsListST a s -> RndST s Int
 randomElementsLength (RandomElementsListST ref) = do
