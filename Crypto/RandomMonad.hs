@@ -4,21 +4,24 @@
 {-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE GADTs #-}
 
-module Crypto.RandomMonad (RndT, RndST, RndIO, Rnd, RndState, getRandomM, getRandom2M, runRndT, newRandomElementST, getRandomElement, randomElementsLength, replaceSeedM, addSeedM, getRandomByteStringM, RandomElementsListST, RndStateList(..), BitStringToRandomExceptions(..)) where
+module Crypto.RandomMonad (RndT, RndST, RndIO, Rnd, RndState, getRandomM, getRandom2M, runRndT, newRandomElementST, getRandomElement, randomElementsLength, replaceSeedM, addSeedM, getRandomByteStringM, RandomElementsListST, RndStateList(..), BitStringToRandomExceptions(..), seedFromBytestrings, seedFromBytestringsThreaded, seedFromBytestringsM) where
 
+import Control.DeepSeq (deepseq, force)
 import Control.Exception (Exception, throw)
 import Control.Monad.Identity (Identity)
 import Control.Monad.Primitive (PrimMonad, PrimState, primitive)
 import Control.Monad.ST (ST)
 import Control.Monad.Trans.Class (MonadTrans, lift)
 import Control.Monad.Trans.State.Lazy (StateT, put, state, runStateT)
+import Control.Parallel (par, pseq)
 import Control.Parallel.Strategies (parMap, rpar, using, rseq)
 import Data.Bits (shiftL, (.|.), xor)
-import Data.Typeable (Typeable)
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef)
+import Data.Typeable (Typeable)
 
 import qualified Data.BitString as BS
-import qualified Data.ByteString.Lazy as ByS
+import qualified Data.ByteString as ByS
+import qualified Data.ByteString.Lazy as ByLS
 import qualified Data.Vector.Unboxed as V
 import qualified Data.Vector.Unboxed.Mutable as VM
 
@@ -40,6 +43,7 @@ multipleBitstringsSplitAt i (RndStateListSequencial x) = join' (split' x) [] []
  split' = map $ BS.splitAt i
  join' [] takers droppers = (takers, RndStateListSequencial droppers)
  join' (x:xs) takers droppers = let (newTake, newDrop) = x in join' xs (newTake:takers) (newDrop:droppers)
+
 multipleBitstringsSplitAt i (RndStateListParallel [x]) = let (takers, droppers) = BS.splitAt i x in ([takers], RndStateListParallel [droppers])
 multipleBitstringsSplitAt i (RndStateListParallel x) = join' (split' x) [] []
  where
@@ -145,3 +149,18 @@ getRandomByteStringM x = RndT $ state $ getRandomByteString x
 
 runRndT :: RndState -> RndT m a -> m (a, RndState)
 runRndT rnd m = runStateT (unRndT m) rnd
+
+withOneElementPrecalculated (x:xs@(y:_)) = par (force y) x :
+                                           withOneElementPrecalculated xs
+
+seedFromBytestrings :: [ByS.ByteString] -> RndStatePrimitive
+seedFromBytestrings list = [BS.bitStringLazy $ ByLS.fromChunks list]
+
+seedFromBytestringsThreaded :: [ByS.ByteString] -> RndStatePrimitive
+seedFromBytestringsThreaded list = [BS.bitStringLazy $ ByLS.fromChunks $ withOneElementPrecalculated list]
+
+seedFromBytestringsM :: Monad m => [ByS.ByteString] -> RndT m RndStatePrimitive
+seedFromBytestringsM list = RndT $ state $ getSeed list
+  where
+  getSeed list st@(RndStateListParallel _) = (seedFromBytestringsThreaded list, st)
+  getSeed list st@(RndStateListSequencial _) = (seedFromBytestrings list, st)
