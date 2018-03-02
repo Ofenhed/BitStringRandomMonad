@@ -4,7 +4,7 @@
 {-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE GADTs #-}
 
-module Crypto.RandomMonad (RndT, RndST, RndIO, Rnd, RndState, getRandomM, getRandom2M, runRndT, newRandomElementST, getRandomElement, randomElementsLength, replaceSeedM, addSeedM, getRandomByteStringM, RandomElementsListST, RndStateList(..), BitStringToRandomExceptions(..), seedFromBytestrings, seedFromBytestringsThreaded, seedFromBytestringsM) where
+module Crypto.RandomMonad (RndT, RndST, RndIO, Rnd, RndState, getRandomM, getRandom2M, runRndT, newRandomElementST, getRandomElement, randomElementsLength, replaceSeedM, addSeedM, getRandomByteStringM, RandomElementsListST, RndStateList(..), RndStateParallelization(..), BitStringToRandomExceptions(..), seedFromBytestrings, seedFromBytestringsThreaded, seedFromBytestringsM) where
 
 import Control.DeepSeq (deepseq, force)
 import Control.Exception (Exception, throw)
