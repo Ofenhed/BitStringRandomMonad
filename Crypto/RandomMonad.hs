@@ -37,18 +37,18 @@ convertBitStringToInteger = BS.foldl' convert' 0
   convert' :: Integer -> Bool -> Integer
   convert' prev cur = (shiftL prev 1) .|. (case cur of True -> 1 ; False -> 0)
 
-multipleBitstringsSplitAt i (RndStateListSequencial [x]) = let (takers, droppers) = BS.splitAt i x in ([takers], RndStateListSequencial [droppers])
-multipleBitstringsSplitAt i (RndStateListSequencial x) = join' (split' x) [] []
- where
- split' = map $ BS.splitAt i
- join' [] takers droppers = (takers, RndStateListSequencial droppers)
- join' (x:xs) takers droppers = let (newTake, newDrop) = x in join' xs (newTake:takers) (newDrop:droppers)
-
-multipleBitstringsSplitAt i (RndStateListParallel [x]) = let (takers, droppers) = BS.splitAt i x in ([takers], RndStateListParallel [droppers])
-multipleBitstringsSplitAt i (RndStateListParallel x) = join' (split' x) [] []
+multipleBitstringsSplitAt i (RndStateList RndStateParallel [x]) = let (takers, droppers) = BS.splitAt i x in ([takers], RndStateList RndStateParallel [droppers])
+multipleBitstringsSplitAt i (RndStateList RndStateParallel x) = join' (split' x) [] []
  where
  split' = parMap rpar (\bs -> let (take,drop) = BS.splitAt i bs in (take `using` rseq, drop))
- join' [] takers droppers = (takers, RndStateListParallel droppers)
+ join' [] takers droppers = (takers, RndStateList RndStateParallel droppers)
+ join' (x:xs) takers droppers = let (newTake, newDrop) = x in join' xs (newTake:takers) (newDrop:droppers)
+
+multipleBitstringsSplitAt i (RndStateList p [x]) = let (takers, droppers) = BS.splitAt i x in ([takers], RndStateList p [droppers])
+multipleBitstringsSplitAt i (RndStateList p x) = join' (split' x) [] []
+ where
+ split' = map $ BS.splitAt i
+ join' [] takers droppers = (takers, RndStateList p droppers)
  join' (x:xs) takers droppers = let (newTake, newDrop) = x in join' xs (newTake:takers) (newDrop:droppers)
 
 multipleBitstringsAssertLength _ [] = False
@@ -108,8 +108,8 @@ randomElementsLength (RandomElementsListST ref) = do
   return $ V.length vec
 
 type RndStatePrimitive = [BS.BitString]
-data RndStateList = RndStateListSequencial RndStatePrimitive
-                  | RndStateListParallel RndStatePrimitive
+data RndStateParallelization = RndStateSeq | RndStatePrecalculate | RndStateParallel
+data RndStateList = RndStateList RndStateParallelization RndStatePrimitive
 
 type RndState = RndStateList
 newtype RndT m a = RndT
@@ -128,14 +128,12 @@ type Rnd a = RndT Identity a
 replaceSeedM :: Monad m => RndStatePrimitive -> RndT m ()
 replaceSeedM s = RndT $ state $ replaceSeedM s
   where
-  replaceSeedM newState (RndStateListParallel _) = ((),RndStateListParallel newState)
-  replaceSeedM newState (RndStateListSequencial _) = ((),RndStateListSequencial newState)
+  replaceSeedM newState (RndStateList p _) = ((),RndStateList p newState)
 
 addSeedM :: Monad m => RndStatePrimitive -> RndT m ()
 addSeedM s = RndT $ state $ addSeedM s
   where
-  addSeedM x (RndStateListSequencial y) = ((),RndStateListSequencial (x ++ y))
-  addSeedM x (RndStateListParallel y) = ((),RndStateListParallel (x ++ y))
+  addSeedM x (RndStateList p y) = ((),RndStateList p (x ++ y))
 
 
 getRandomM :: Monad m => Integer -> RndT m Integer
@@ -162,5 +160,5 @@ seedFromBytestringsThreaded list = [BS.bitStringLazy $ ByLS.fromChunks $ withOne
 seedFromBytestringsM :: Monad m => [ByS.ByteString] -> RndT m RndStatePrimitive
 seedFromBytestringsM list = RndT $ state $ getSeed list
   where
-  getSeed list st@(RndStateListParallel _) = (seedFromBytestringsThreaded list, st)
-  getSeed list st@(RndStateListSequencial _) = (seedFromBytestrings list, st)
+  getSeed list st@(RndStateList RndStatePrecalculate _) = (seedFromBytestringsThreaded list, st)
+  getSeed list st@(RndStateList _ _) = (seedFromBytestrings list, st)
