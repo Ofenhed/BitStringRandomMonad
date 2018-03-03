@@ -46,6 +46,7 @@ Test-Suite random-monad-tests
                  parallel,
                  vector,
                  BitStringRandomMonad
+  default-language:    Haskell2010
 
 Source-Repository head
   Type:       git
