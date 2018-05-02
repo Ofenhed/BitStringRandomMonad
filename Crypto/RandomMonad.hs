@@ -37,14 +37,14 @@ convertBitStringToInteger = BS.foldl' convert' 0
   convert' :: Integer -> Bool -> Integer
   convert' prev cur = (shiftL prev 1) .|. (case cur of True -> 1 ; False -> 0)
 
-multipleBitstringsSplitAt i (RndStateList RndStateParallel [x]) = let (takers, droppers) = BS.splitAt i x in ([takers], RndStateList RndStateParallel [droppers])
+multipleBitstringsSplitAt i (RndStateList p [x]) = let (takers, droppers) = BS.splitAt i x in ([takers], RndStateList p [droppers])
+
 multipleBitstringsSplitAt i (RndStateList RndStateParallel x) = join' (split' x) [] []
  where
  split' = parMap rpar (\bs -> let (take,drop) = BS.splitAt i bs in (take `using` rseq, drop))
  join' [] takers droppers = (takers, RndStateList RndStateParallel droppers)
  join' (x:xs) takers droppers = let (newTake, newDrop) = x in join' xs (newTake:takers) (newDrop:droppers)
 
-multipleBitstringsSplitAt i (RndStateList p [x]) = let (takers, droppers) = BS.splitAt i x in ([takers], RndStateList p [droppers])
 multipleBitstringsSplitAt i (RndStateList p x) = join' (split' x) [] []
  where
  split' = map $ BS.splitAt i
